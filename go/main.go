@@ -90,9 +90,10 @@ func serve(open func(time.Duration) (server.Database, error)) error {
 		return err
 	}
 
-	// Open the browser only when serving at the root and not disabled.
+	// Open the browser only when not behind a base path (likely a proxy) and not
+	// disabled. The app is served under the server's prefix, so open that.
 	if flagBasePath == "" && !flagNoBrowser {
-		openBrowser("http://" + flagAddress)
+		openBrowser("http://" + flagAddress + srv.Prefix())
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)

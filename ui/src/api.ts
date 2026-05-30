@@ -4,11 +4,14 @@ import { createZodFetcher } from "zod-fetch";
 let basePath = document.querySelector<HTMLMetaElement>(
   `meta[name="BASE_PATH"]`,
 );
+// The whole app is served under a "/db" subtree (plus any base path), so the
+// API lives at "<prefix>/api". In PROD the prefix is carried by the BASE_PATH
+// meta tag (always injected by the Go server, e.g. "/db" or "/base/db").
 const BASE_URL = import.meta.env.PROD
   ? basePath
     ? `${basePath.content}/api`
-    : "/api"
-  : "http://localhost:3030/api";
+    : "/db/api"
+  : "http://localhost:3030/db/api";
 
 const counts = z
   .object({

@@ -10,6 +10,11 @@ import (
 	"strings"
 )
 
+// dbPrefix is the fixed path segment the entire app (UI + JSON API) is served
+// under, so the API lives at e.g. "/db/api/tables". It is composed after any
+// configured BasePath, and is the subtree a host server mounts Handler() at.
+const dbPrefix = "/db"
+
 // Options configures the HTTP server. Mirrors the relevant Rust CLI args.
 type Options struct {
 	// Address to bind to, e.g. "127.0.0.1:3030".
@@ -29,11 +34,13 @@ type Server struct {
 	ui   fs.FS
 	opts Options
 
-	// indexHTML is the (base-path-rewritten) index.html served for SPA routes.
+	// indexHTML is the (prefix-rewritten) index.html served for SPA routes.
 	indexHTML []byte
 	// assetsReplacer is the string that replaces "/__ASSETS_PATH__" in assets
-	// (the base path, or "" when none).
+	// (the prefix the app is served under).
 	assetsReplacer string
+	// prefix is the path subtree the whole app is served under: BasePath + "/db".
+	prefix string
 
 	shutdownCh chan struct{}
 }
@@ -49,26 +56,34 @@ func New(db Database, ui fs.FS, opts Options) (*Server, error) {
 	}
 	index := string(indexBytes)
 
-	if opts.BasePath != "" {
-		base := `<meta name="BASE_PATH" content="` + opts.BasePath + `" />`
-		index = strings.Replace(index, `<!-- __BASE__ -->`, base, 1)
-		index = strings.ReplaceAll(index, "/__ASSETS_PATH__", opts.BasePath)
-	} else {
-		index = strings.ReplaceAll(index, "/__ASSETS_PATH__", "")
-	}
+	// The app is always served under a "/db" subtree, composed after any
+	// configured base path. This prefix is baked into index.html for the UI
+	// router and API calls, and is where a host server mounts Handler().
+	prefix := opts.BasePath + dbPrefix
+
+	base := `<meta name="BASE_PATH" content="` + prefix + `" />`
+	index = strings.Replace(index, `<!-- __BASE__ -->`, base, 1)
+	index = strings.ReplaceAll(index, "/__ASSETS_PATH__", prefix)
 
 	return &Server{
 		db:             db,
 		ui:             ui,
 		opts:           opts,
 		indexHTML:      []byte(index),
-		assetsReplacer: opts.BasePath, // base path, or "" when none
+		assetsReplacer: prefix,
+		prefix:         prefix,
 		shutdownCh:     make(chan struct{}, 1),
 	}, nil
 }
 
-// handler returns the fully-wired HTTP handler (routes + CORS + optional base path).
-func (s *Server) handler() http.Handler {
+// Handler returns the fully-wired HTTP handler: the JSON API and the embedded
+// UI, all served under the server's prefix (see Prefix). A host application can
+// reach into this package as a library and mount the returned handler, e.g.:
+//
+//	mux.Handle(srv.Prefix()+"/", srv.Handler())
+//
+// CORS is applied to the app routes; the prefix redirects are not wrapped.
+func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
 	// API routes (under /api). Order/semantics mirror Rust handlers::routes.
@@ -85,25 +100,35 @@ func (s *Server) handler() http.Handler {
 	// Everything else: static assets, with index.html as SPA fallback.
 	mux.HandleFunc("/", s.handleStatic)
 
-	var h http.Handler = withCORS(mux)
+	h := withCORS(mux)
 
-	// Mount under the base path if configured (Rust wraps routes in the prefix).
-	if s.opts.BasePath != "" {
-		top := http.NewServeMux()
-		top.Handle(s.opts.BasePath+"/", http.StripPrefix(s.opts.BasePath, h))
-		top.HandleFunc(s.opts.BasePath, func(w http.ResponseWriter, r *http.Request) {
-			http.Redirect(w, r, s.opts.BasePath+"/", http.StatusMovedPermanently)
-		})
-		h = top
-	}
+	// Mount the whole app under s.prefix (base path + "/db") and strip it so the
+	// inner mux sees plain /api and / paths. Mounting under the prefix here means
+	// a host server can route the prefix subtree straight at this handler.
+	top := http.NewServeMux()
+	top.Handle(s.prefix+"/", http.StripPrefix(s.prefix, h))
+	top.HandleFunc(s.prefix, func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, s.prefix+"/", http.StatusMovedPermanently)
+	})
+	// Standalone convenience: send the bare root into the app subtree. When
+	// mounted in a host server the host owns "/" and this is never reached.
+	top.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, s.prefix+"/", http.StatusFound)
+	})
 
-	return h
+	return top
+}
+
+// Prefix is the path subtree the app is served under: the configured base path
+// followed by "/db". A host server mounts Handler() at Prefix()+"/".
+func (s *Server) Prefix() string {
+	return s.prefix
 }
 
 // Run starts the HTTP server and blocks until the context is cancelled (e.g.
 // SIGINT) or a shutdown request arrives on /api/shutdown.
 func (s *Server) Run(ctx context.Context) error {
-	srv := &http.Server{Addr: s.opts.Address, Handler: s.handler()}
+	srv := &http.Server{Addr: s.opts.Address, Handler: s.Handler()}
 
 	go func() {
 		select {
