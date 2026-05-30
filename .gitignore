@@ -3,3 +3,6 @@
 *.duckdb
 .direnv
 result
+
+# Go port: the built binary (the go/ module tree, incl. built assets, is committed)
+/sql-studio
