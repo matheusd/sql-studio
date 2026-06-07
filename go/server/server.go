@@ -82,7 +82,12 @@ func New(db Database, ui fs.FS, opts Options) (*Server, error) {
 //
 //	mux.Handle(srv.Prefix()+"/", srv.Handler())
 //
-// CORS is applied to the app routes; the prefix redirects are not wrapped.
+// http.ServeMux does not strip the matched pattern before dispatching, so the
+// inner handler still sees the full Prefix()+"/..." path and routes it correctly.
+// CORS is applied to the app routes; the prefix redirects are not wrapped. Under
+// such a subtree mount the host owns "/", so the inner standalone-root redirect
+// below is unreachable (and harmless) — it exists only for running this handler
+// directly as a standalone server.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 

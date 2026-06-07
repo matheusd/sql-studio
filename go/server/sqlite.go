@@ -21,6 +21,15 @@ type SQLiteDB struct {
 	queryTimeout time.Duration
 }
 
+// NewSQLite wraps an already-open *sql.DB in a *SQLiteDB without opening a new
+// connection or mutating the pool. The caller owns the handle's lifecycle and
+// tuning (e.g. SetMaxOpenConns); SQL Studio never closes the injected handle, so
+// db must outlive the server. path is retained only for os.Stat-based file
+// metadata in Overview and Tables and is not used to open db.
+func NewSQLite(db *sql.DB, path string, queryTimeout time.Duration) *SQLiteDB {
+	return &SQLiteDB{path: path, db: db, queryTimeout: queryTimeout}
+}
+
 // OpenSQLite opens a SQLite database. If path == "preview", the bundled sample
 // database is written to "sample.db" and opened read-only; otherwise the file at
 // path is opened read-write. sample is the embedded sample DB bytes (see
@@ -55,7 +64,7 @@ func OpenSQLite(path string, queryTimeout time.Duration, sample []byte) (*SQLite
 	}
 	slog.Info("opened sqlite database", "tables", tables, "path", path)
 
-	return &SQLiteDB{path: path, db: db, queryTimeout: queryTimeout}, nil
+	return NewSQLite(db, path, queryTimeout), nil
 }
 
 // colInfo holds a row of PRAGMA table_info.
