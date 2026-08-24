@@ -12,6 +12,7 @@ import (
 
 	"github.com/matheusd/sql-studio/go/server"
 	"github.com/matheusd/sql-studio/go/ui"
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/spf13/cobra"
 )
 

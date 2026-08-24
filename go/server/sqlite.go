@@ -9,8 +9,6 @@ import (
 	"path/filepath"
 	"sort"
 	"time"
-
-	_ "github.com/mattn/go-sqlite3"
 )
 
 // SQLiteDB is the SQLite implementation of Database. It ports the Rust `sqlite`
