@@ -61,6 +61,32 @@ func TestPostgresUsesInjectedPool(t *testing.T) {
 	if len(data.Rows) != 1 || data.Rows[0][1] != "alpha" {
 		t.Fatalf("TableData = %#v, want alpha row", data)
 	}
+
+	// Catalog verification must make hostile relation/column names safe before
+	// the backend interpolates the canonical identifiers into data queries.
+	hostileTable, hostileColumn := `we"ird;drop`, `co"l`
+	quotedTable := quotePostgresIdentifier(hostileTable)
+	quotedColumn := quotePostgresIdentifier(hostileColumn)
+	if _, err := admin.Exec(`CREATE TABLE "` + schema + `".` + quotedTable + ` (` + quotedColumn + ` TEXT PRIMARY KEY); INSERT INTO "` + schema + `".` + quotedTable + ` (` + quotedColumn + `) VALUES ('safe')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := backend.Table(ctx, hostileTable); err != nil {
+		t.Fatal(err)
+	}
+	hostileData, err := backend.TableData(ctx, hostileTable, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hostileData.Rows) != 1 || hostileData.Rows[0][0] != "safe" {
+		t.Fatalf("hostile TableData = %#v, want safe row", hostileData)
+	}
+	erd, err := backend.Erd(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(erd.Tables) < 2 {
+		t.Fatalf("ERD omitted hostile relation: %#v", erd.Tables)
+	}
 	if err := admin.PingContext(ctx); err != nil {
 		t.Fatalf("backend closed caller pool: %v", err)
 	}

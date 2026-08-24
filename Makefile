@@ -22,7 +22,7 @@ SAMPLE_DST  := go/sample.sqlite3
 CGO_CFLAGS  ?= -DSQLITE_ENABLE_DBSTAT_VTAB
 export CGO_CFLAGS
 
-.PHONY: all ui assets build run vet tidy clean
+.PHONY: all ui assets build run vet lib-build tidy clean
 
 all: build
 
@@ -45,6 +45,10 @@ run: build
 
 vet:
 	CGO_ENABLED=1 CGO_CFLAGS="$(CGO_CFLAGS)" $(GO) -C go vet ./...
+
+# Prove importable server/UI packages do not pull the cgo SQLite driver.
+lib-build:
+	CGO_ENABLED=0 $(GO) -C go build ./server ./ui
 
 tidy:
 	$(GO) -C go mod tidy

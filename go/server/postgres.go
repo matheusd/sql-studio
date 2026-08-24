@@ -133,7 +133,8 @@ func (d *PostgresDB) Overview(ctx context.Context) (*Overview, error) {
 	sortCountDesc(rows)
 	sortCountDesc(columns)
 	sortCountDesc(indexCounts)
-	return &Overview{FileName: databaseName, DBSize: formatSize(float64(bytes)), SQLiteVersion: &version, Tables: tables, Indexes: indexes, Triggers: triggers, Views: views, RowCounts: rows, ColumnCounts: columns, IndexCounts: indexCounts}, nil
+	_ = version
+	return &Overview{FileName: databaseName, DBSize: formatSize(float64(bytes)), SQLiteVersion: nil, Tables: tables, Indexes: indexes, Triggers: triggers, Views: views, RowCounts: rows, ColumnCounts: columns, IndexCounts: indexCounts}, nil
 }
 
 func (d *PostgresDB) Tables(ctx context.Context) (*Tables, error) {
@@ -247,7 +248,7 @@ func (d *PostgresDB) Erd(ctx context.Context) (*Erd, error) {
 	if err != nil {
 		return nil, err
 	}
-	erd := &Erd{}
+	erd := &Erd{Tables: []ErdTable{}, Relationships: []ErdRelationship{}}
 	for _, name := range names {
 		info, err := d.columns(ctx, name)
 		if err != nil {
